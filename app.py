@@ -3,12 +3,12 @@ import pandas as pd
 import json
 
 # --- 1. 頁面設定 ---
-st.set_page_config(layout="wide", page_title="台灣蛙鳴環境聲景地圖")
+st.set_page_config(layout="wide", page_title="台灣蛙鳴環境聲景：永續漣漪地圖")
 
 st.markdown("""
     <div style="text-align: center;">
         <h1 style='color: #C4E1FF; font-weight: 200; letter-spacing: 3px;'>🌿 台灣蛙鳴環境聲景：永續漣漪地圖</h1>
-        <p style='color: #888; font-size: 1.1em;'>動畫已設定為自動重複播放，漣漪速度已調慢 3 倍，呈現靜謐的生命律動。</p>
+        <p style='color: #888; font-size: 1.1em;'>動畫已設定為自動重複播放。地圖支援滾輪縮放與拖動，讓您自由探索台灣聲景。</p>
     </div>
 """, unsafe_allow_html=True)
 
@@ -45,22 +45,18 @@ if not raw_data.empty:
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     
-    <div id="map-container" style="position: relative; width: 100%; height: 650px; background: #010101; border-radius: 12px; overflow: hidden;">
+    <div id="map-container" style="position: relative; width: 95%; height: 550px; background: #010101; border-radius: 12px; overflow: hidden; margin: 0 auto;">
         <div id="leaflet-map" style="width: 100%; height: 100%; z-index: 1;"></div>
     </div>
 
     <style>
-        /* 漣漪動畫：從 4s 延長至 12s (慢 3 倍) */
         @keyframes ripple-slow {{
             0% {{ transform: scale(1); opacity: 0; }}
             10% {{ opacity: 0.7; }}
             100% {{ transform: scale(6); opacity: 0; filter: blur(8px); }}
         }}
         .custom-ripple {{
-            position: relative;
-            display: flex;
-            justify-content: center;
-            align-items: center;
+            position: relative; display: flex; justify-content: center; align-items: center;
         }}
         .ripple-core {{
             width: 6px; height: 6px; background-color: #C4E1FF; 
@@ -76,12 +72,13 @@ if not raw_data.empty:
     </style>
 
     <script>
+        // 設定初始地圖位置，調低 zoom 至 6.8 讓台灣完整露出來
         const map = L.map('leaflet-map', {{
-            center: [23.7, 121.0],
-            zoom: 7.5,
-            zoomControl: false,
-            dragging: true,
-            scrollWheelZoom: false
+            center: [23.6, 120.9],
+            zoom: 6.8,
+            zoomControl: true, // 開啟縮放按鈕
+            dragging: true, // 允許拖動
+            scrollWheelZoom: true // 允許滑鼠滾輪縮放
         }});
 
         L.tileLayer('https://{{s}}.basemaps.cartocdn.com/dark_all/{{z}}/{{x}}/{{y}}{{r}}.png', {{
@@ -95,9 +92,8 @@ if not raw_data.empty:
         function startPlayback() {{
             markerLayer.clearLayers();
             let totalDelay = 0;
-            const step = 1200; // 每個點出現間隔調慢至 1.2秒 (慢 3 倍)
+            const step = 1200;
 
-            // 民眾資料
             rawData.forEach((p, i) => {{
                 totalDelay = i * step;
                 setTimeout(() => {{
@@ -105,7 +101,6 @@ if not raw_data.empty:
                 }}, totalDelay);
             }});
 
-            // 專家資料 (接著民眾資料後出現)
             const verStartDelay = totalDelay + step;
             verData.forEach((p, i) => {{
                 setTimeout(() => {{
@@ -113,7 +108,6 @@ if not raw_data.empty:
                 }}, verStartDelay + (i * step));
             }});
 
-            // 自動重複：計算總時長後重新啟動 (總點數 * 間隔 + 漣漪餘韻)
             const totalCycleTime = verStartDelay + (verData.length * step) + 5000;
             setTimeout(startPlayback, totalCycleTime);
         }}
@@ -131,16 +125,16 @@ if not raw_data.empty:
             L.marker([lat, lon], {{icon: icon}}).addTo(markerLayer);
         }}
 
-        // 啟動第一次播放
         startPlayback();
     </script>
     """
 
-    st.components.v1.html(html_content, height=670)
+    # 將 Streamlit 元件高度配合地圖高度設定為 580
+    st.components.v1.html(html_content, height=580)
 
     st.sidebar.markdown(f"### 🌊 播放資訊")
     st.sidebar.write("● 模式：自動循環播放")
-    st.sidebar.write("● 速度：慢速 (12s 擴散)")
+    st.sidebar.write("● 縮放：支援滑鼠滾輪")
     st.sidebar.write(f"● 總紀錄：{len(raw_data) + len(verified_data)} 筆")
     
 else:
