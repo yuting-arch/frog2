@@ -1,20 +1,20 @@
 import streamlit as st
 import pandas as pd
-import folium
-from streamlit_folium import folium_static
 import json
 
-# --- 1. 頁面藝術化設定 ---
-st.set_page_config(layout="wide", page_title="台灣蛙鳴環境聲景地圖")
+# --- 1. 頁面設定 ---
+st.set_page_config(layout="wide", page_title="台灣蛙鳴聲景：漣漪沉浸地圖")
 
 st.markdown("""
-    <div style="text-align: center; margin-bottom: 10px;">
-        <h1 style='color: #C4E1FF; font-weight: 200; letter-spacing: 3px;'>🌿 台灣蛙鳴環境聲景：時序水滴地圖</h1>
-        <p style='color: #888; font-size: 1.1em;'>每一聲紀錄如雨滴般落下，沒入台灣的夜色中。</p>
-    </div>
+    <h1 style='text-align: center; color: #C4E1FF; font-weight: 200; letter-spacing: 3px;'>
+        💧 台灣蛙鳴：時序漣漪沉浸地圖
+    </h1>
+    <p style='text-align: center; color: #666; font-size: 1em;'>
+        每一聲紀錄在夜色中泛起 #C4E1FF 的柔和漣漪，靜謐地訴說著台灣的生命力。
+    </p>
 """, unsafe_allow_html=True)
 
-# --- 2. 核心資料讀取與時序排序 ---
+# --- 2. 資料讀取與時序排序 ---
 @st.cache_data
 def load_and_process_data():
     def try_read(file_name):
@@ -23,110 +23,144 @@ def load_and_process_data():
                 return pd.read_csv(file_name, encoding=enc)
             except:
                 continue
-        return None
+        return pd.read_csv(file_name, encoding='latin1')
 
-    df_raw = try_read('raw_data.csv')
-    df_verified = try_read('verified_data.csv')
-    
-    # 處理與排序資料
-    def process_df(df):
-        if df is not None:
+    try:
+        df_raw = try_read('raw_data.csv')
+        df_verified = try_read('verified_data.csv')
+        
+        for df in [df_raw, df_verified]:
             df['Latitude'] = pd.to_numeric(df['Latitude'], errors='coerce')
             df['Longitude'] = pd.to_numeric(df['Longitude'], errors='coerce')
             df['Create Date'] = pd.to_datetime(df['Create Date'], errors='coerce')
-            return df.dropna(subset=['Latitude', 'Longitude', 'Create Date']).sort_values('Create Date')
-        return pd.DataFrame()
+        
+        # 按時間排序
+        df_raw = df_raw.sort_values('Create Date').dropna(subset=['Latitude', 'Longitude'])
+        df_verified = df_verified.sort_values('Create Date').dropna(subset=['Latitude', 'Longitude'])
+        
+        return df_raw, df_verified
+    except Exception as e:
+        return pd.DataFrame(), pd.DataFrame()
 
-    return process_df(df_raw), process_df(df_verified)
+try:
+    raw_data, verified_data = load_and_process_data()
 
-raw_data, verified_data = load_and_process_data()
+    # --- 3. 沉浸式漣漪地圖 HTML/JS ---
+    def create_ripple_map(df_r, df_v):
+        raw_json = df_r.to_json(orient='records')
+        verified_json = df_v.to_json(orient='records')
 
-# --- 3. 建立地圖 ---
-if not raw_data.empty or not verified_data.empty:
-    # 建立 Folium 地圖 (底圖非常清楚)
-    m = folium.Map(
-        location=[23.6, 121.0], 
-        zoom_start=7, 
-        tiles="cartodbdarkmatter",
-        zoom_control=True
-    )
+        html_content = f"""
+        <div id="art-container">
+            <svg id="taiwan-svg" viewBox="119.5 21.5 3.0 4.0" preserveAspectRatio="xMidYMid meet">
+                <path d="M121.5,21.8C121.4,21.8,121.3,21.9,121.2,21.9C121.1,22,121,22.1,120.9,22.2C120.7,22.5,120.5,22.8,120.4,23.1C120.2,23.5,120.1,23.9,120.1,24.3C120.1,24.7,120.2,25.1,120.4,25.4C120.6,25.6,121,25.7,121.3,25.7C121.7,25.7,122.1,25.5,122.2,25.1C122.4,24.7,122.4,24.3,122.3,23.8C122.2,23.2,122,22.6,121.7,22.1C121.6,21.9,121.5,21.8,121.5,21.8Z" 
+                      fill="none" stroke="#2D4F4F" stroke-width="0.015" />
+                <path d="M120.2,25.2 L120.4,25.5 L120.8,25.7 L121.5,25.7 L122.1,25.4 L122.4,24.8 L122.5,24.1 L122.3,23.2 L121.8,22.1 L121.4,21.7" 
+                      fill="none" stroke="#1A3A3A" stroke-width="0.008" stroke-dasharray="0.02, 0.02" />
+            </svg>
+            <div id="ripple-layer"></div>
+        </div>
 
-    # 4. 插入自定義時序動畫腳本 (讓點位像水滴般滴入)
-    # 我們將資料轉為 JSON 傳給 JavaScript
-    raw_list = raw_data[['Latitude', 'Longitude', 'Username']].to_dict(orient='records')
-    ver_list = verified_data[['Latitude', 'Longitude', 'Review Identity']].to_dict(orient='records')
+        <style>
+            body, html {{ margin: 0; padding: 0; background-color: #010101; overflow: hidden; }}
+            #art-container {{
+                position: relative; width: 100%; height: 650px;
+                background-color: #010101; display: flex; justify-content: center; align-items: center;
+            }}
+            #taiwan-svg {{
+                position: absolute; width: 450px; height: 600px; opacity: 0.6;
+                filter: drop-shadow(0 0 8px #1A3A3A);
+            }}
+            #ripple-layer {{ 
+                position: absolute; width: 450px; height: 600px; 
+            }}
 
-    # 定義動畫 CSS 與 JS
-    custom_script = f"""
-    <style>
-        @keyframes drop-in {{
-            0% {{ transform: translateY(-100px); opacity: 0; }}
-            80% {{ opacity: 1; }}
-            100% {{ transform: translateY(0); opacity: 1; }}
-        }}
-        @keyframes ripple-fade {{
-            0% {{ transform: scale(0.2); opacity: 0.8; }}
-            100% {{ transform: scale(4); opacity: 0; filter: blur(4px); }}
-        }}
-        .drop-core {{
-            width: 6px; height: 6px; border-radius: 50%;
-            animation: drop-in 0.8s ease-in forwards;
-        }}
-        .ripple-effect {{
-            position: absolute; width: 15px; height: 15px; border-radius: 50%;
-            border: 1px solid; animation: ripple-fade 4s ease-out forwards;
-            left: -4.5px; top: -4.5px; /* 校正中心點 */
-        }}
-    </style>
-    <script>
-        window.onload = function() {{
-            const rawData = {json.dumps(raw_list)};
-            const verData = {json.dumps(ver_list)};
-            
-            // 由於 Folium 渲染需要時間，延遲 1 秒後開始滴落動畫
-            setTimeout(() => {{
-                // 處理民眾資料
-                rawData.forEach((point, i) => {{
+            /* 核心 6px 定點 (移除掉落動畫，改為原位呼吸浮現) */
+            .core-point {{
+                position: absolute; width: 6px; height: 6px; border-radius: 50%;
+                transform: translate(-50%, -50%); opacity: 0;
+                animation: fade-in-core 1.2s ease-out forwards;
+            }}
+
+            /* 藝術漣漪：向外柔和淡化 */
+            .ripple {{
+                position: absolute; border-radius: 50%; border: 0.8px solid;
+                transform: translate(-50%, -50%) scale(0); opacity: 0;
+                animation: ripple-out 4.5s ease-out forwards;
+            }}
+
+            .raw-color {{ background-color: #C4E1FF; box-shadow: 0 0 10px #C4E1FF; border-color: #C4E1FF; }}
+            .ver-color {{ background-color: #f1c40f; box-shadow: 0 0 10px #f1c40f; border-color: #f1c40f; }}
+
+            @keyframes fade-in-core {{
+                0% {{ opacity: 0; transform: translate(-50%, -50%) scale(0.5); }}
+                100% {{ opacity: 1; transform: translate(-50%, -50%) scale(1); }}
+            }}
+
+            @keyframes ripple-out {{
+                0% {{ transform: translate(-50%, -50%) scale(0.2); opacity: 0.8; }}
+                20% {{ opacity: 0.6; }}
+                100% {{ transform: translate(-50%, -50%) scale(5); opacity: 0; filter: blur(6px); }}
+            }}
+        </style>
+
+        <script>
+            const rawData = {raw_json};
+            const verData = {verified_json};
+            const layer = document.getElementById('ripple-layer');
+
+            function getPos(lat, lon) {{
+                const x = ((lon - 119.5) / 3.0) * 450;
+                const y = 600 - (((lat - 21.5) / 4.0) * 600);
+                return {{x, y}};
+            }}
+
+            function playData(data, colorClass, baseDelay) {{
+                data.forEach((row, i) => {{
                     setTimeout(() => {{
-                        addArtMarker(point.Latitude, point.Longitude, '#C4E1FF', point.Username);
-                    }}, i * 400); // 每 0.4 秒滴入一筆
+                        const pos = getPos(row.Latitude, row.Longitude);
+                        
+                        // 建立核心點
+                        const dot = document.createElement('div');
+                        dot.className = 'core-point ' + colorClass;
+                        dot.style.left = pos.x + 'px'; dot.style.top = pos.y + 'px';
+                        layer.appendChild(dot);
+
+                        // 建立漣漪 (重複兩次以增加層次感)
+                        const createRipple = (delay) => {{
+                            const rip = document.createElement('div');
+                            rip.className = 'ripple ' + colorClass;
+                            rip.style.left = pos.x + 'px'; rip.style.top = pos.y + 'px';
+                            rip.style.width = '15px'; rip.style.height = '15px';
+                            rip.style.animationDelay = delay + 's';
+                            layer.appendChild(rip);
+                        }};
+
+                        createRipple(0);
+                        createRipple(1.5); // 第二道漣漪延遲，增加水面擴散感
+                        
+                    }}, baseDelay + (i * 350)); 
                 }});
+            }}
 
-                // 處理專家資料 (延遲 2 秒後開始)
-                setTimeout(() => {{
-                    verData.forEach((point, i) => {{
-                        setTimeout(() => {{
-                            addArtMarker(point.Latitude, point.Longitude, '#f1c40f', '專家驗證');
-                        }}, i * 400);
-                    }});
-                }}, 2000);
-            }}, 1000);
-        }};
+            playData(rawData, 'raw-color', 500);
+            playData(verData, 'ver-color', 2500); 
+        </script>
+        """
+        return html_content
 
-        function addArtMarker(lat, lon, color, name) {{
-            // 這是 Leaflet 的 API，在地圖上動態新增標記
-            const map = window.parent.L.DomUtil.get('map')._leaflet_map; 
-            const icon = window.parent.L.divIcon({{
-                html: `<div style="position:relative;">
-                        <div class="drop-core" style="background-color:${{color}}; box-shadow:0 0 8px ${{color}};"></div>
-                        <div class="ripple-effect" style="border-color:${{color}};"></div>
-                       </div>`,
-                className: '',
-                iconSize: [6, 6],
-                iconAnchor: [3, 3]
-            }});
-            window.parent.L.marker([lat, lon], {{icon: icon}}).addTo(map).bindPopup(name);
-        }}
-    </script>
-    """
-    
-    # 將地圖顯示出來
-    folium_static(m, width=1100, height=650)
-    
-    # 注入動畫腳本
-    st.components.v1.html(custom_script, height=0)
+    if not raw_data.empty or not verified_data.empty:
+        st.components.v1.html(create_ripple_map(raw_data, verified_data), height=660)
+    else:
+        st.warning("等待資料載入中，請確保根目錄有 raw_data.csv")
 
-    st.write(f"✅ 已準備好 {len(raw_data)} 筆資料，地圖正在依序滴入中...")
+    # 4. 側邊欄
+    st.sidebar.title("🌧️ 聲景撥放器")
+    st.sidebar.markdown(f"**民眾紀錄：** {len(raw_data)} 筆")
+    st.sidebar.markdown(f"**專家驗證：** {len(verified_data)} 筆")
+    st.sidebar.write("---")
+    if st.sidebar.button("重新播放漣漪動畫"):
+        st.rerun()
 
-else:
-    st.warning("⚠️ 找不到有效資料。請檢查 CSV 檔案與欄位名稱（Latitude, Longitude, Create Date）。")
+except Exception as e:
+    st.error(f"地圖啟動失敗：{e}")
