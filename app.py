@@ -1,20 +1,18 @@
 import streamlit as st
 import pandas as pd
-import folium
-from streamlit_folium import folium_static
 import json
 
-# --- 1. 頁面藝術化設定 ---
+# --- 1. 頁面設定 ---
 st.set_page_config(layout="wide", page_title="台灣蛙鳴環境聲景地圖")
 
 st.markdown("""
-    <div style="text-align: center; margin-bottom: 10px;">
-        <h1 style='color: #C4E1FF; font-weight: 200; letter-spacing: 3px;'>🌿 台灣蛙鳴環境聲景：分離層沉浸地圖</h1>
-        <p style='color: #888; font-size: 1.1em;'>底圖與動畫分離：底圖靜止呈現，動畫於上方依時序泛起漣漪。</p>
+    <div style="text-align: center;">
+        <h1 style='color: #C4E1FF; font-weight: 200; letter-spacing: 3px;'>🌿 台灣蛙鳴環境聲景：時序漣漪地圖</h1>
+        <p style='color: #888; font-size: 1.1em;'>底圖已鎖定。資料將依序在精確座標泛起 #C4E1FF 漣漪。</p>
     </div>
 """, unsafe_allow_html=True)
 
-# --- 2. 核心資料讀取與排序 ---
+# --- 2. 資料讀取與時序排序 ---
 @st.cache_data
 def load_and_process_data():
     def try_read(file_name):
@@ -33,112 +31,101 @@ def load_and_process_data():
             df['Latitude'] = pd.to_numeric(df['Latitude'], errors='coerce')
             df['Longitude'] = pd.to_numeric(df['Longitude'], errors='coerce')
             df['Create Date'] = pd.to_datetime(df['Create Date'], errors='coerce')
-            return df.dropna(subset=['Latitude', 'Longitude']).sort_values('Create Date')
+            return df.dropna(subset=['Latitude', 'Longitude', 'Create Date']).sort_values('Create Date')
         return pd.DataFrame()
 
     return finalize(df_raw), finalize(df_verified)
 
 raw_data, verified_data = load_and_process_data()
 
-# --- 3. 建立畫面 ---
+# --- 3. 生成整合式地圖與動畫 (單一 HTML 容器) ---
 if not raw_data.empty:
-    # 建立容器
-    container = st.container()
+    raw_list = raw_data[['Latitude', 'Longitude', 'Username']].to_dict(orient='records')
+    ver_list = verified_data[['Latitude', 'Longitude', 'Review Identity']].to_dict(orient='records')
+
+    # 這裡我們手動建構一個包含 Leaflet 地圖與 CSS 動畫的完整 HTML
+    html_content = f"""
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     
-    with container:
-        # 第一層：底圖層 (Folium)
-        # 設定地圖不可拖動與縮放，確保它像「貼紙」一樣固定
-        m = folium.Map(
-            location=[23.6, 120.8], 
-            zoom_start=7.5, 
-            tiles="cartodbdarkmatter",
-            zoom_control=False,
-            scrollWheelZoom=False,
-            dragging=False
-        )
-        
-        # 準備動畫數據
-        raw_list = raw_data[['Latitude', 'Longitude']].to_dict(orient='records')
-        
-        # 第二層：透明動畫層 (HTML/JS)
-        # 我們計算台灣經緯度到網頁像素的投影
-        animation_html = f"""
-        <div id="animation-overlay"></div>
-        <style>
-            #animation-overlay {{
-                position: absolute;
-                top: 0; left: 0;
-                width: 100%; height: 650px;
-                pointer-events: none; /* 讓滑鼠可以穿透 */
-                z-index: 999;
-                overflow: hidden;
-            }}
-            @keyframes ripple-effect {{
-                0% {{ transform: translate(-50%, -50%) scale(0.2); opacity: 0; }}
-                20% {{ opacity: 0.8; }}
-                100% {{ transform: translate(-50%, -50%) scale(4); opacity: 0; filter: blur(4px); }}
-            }}
-            .ripple {{
-                position: absolute;
-                width: 15px; height: 15px;
-                border: 1px solid #C4E1FF;
-                border-radius: 50%;
-                animation: ripple-effect 4s ease-out forwards;
-            }}
-            .dot {{
-                position: absolute;
-                width: 6px; height: 6px;
-                background-color: #C4E1FF;
-                border-radius: 50%;
-                box-shadow: 0 0 8px #C4E1FF;
-                transform: translate(-50%, -50%);
-            }}
-        </style>
-        <script>
-            const data = {json.dumps(raw_list)};
-            const overlay = document.getElementById('animation-overlay');
-            
-            // 台灣座標投影函數 (針對 Folium zoom 7.5 的位置微調)
-            function project(lat, lon) {{
-                const mapWidth = 1100;
-                const mapHeight = 650;
-                const minLon = 118.5, maxLon = 123.0;
-                const minLat = 21.5, maxLat = 25.8;
-                
-                const x = ((lon - minLon) / (maxLon - minLon)) * mapWidth;
-                const y = mapHeight - (((lat - minLat) / (maxLat - minLat)) * mapHeight);
-                return {{x, y}};
-            }}
+    <div id="map-container" style="position: relative; width: 100%; height: 650px; background: #010101; border-radius: 12px; overflow: hidden;">
+        <div id="leaflet-map" style="width: 100%; height: 100%; z-index: 1;"></div>
+    </div>
 
-            data.forEach((p, i) => {{
-                setTimeout(() => {{
-                    const pos = project(p.Latitude, p.Longitude);
-                    
-                    // 畫核心點
-                    const dot = document.createElement('div');
-                    dot.className = 'dot';
-                    dot.style.left = pos.x + 'px';
-                    dot.style.top = pos.y + 'px';
-                    overlay.appendChild(dot);
+    <style>
+        @keyframes ripple-anim {{
+            0% {{ transform: scale(1); opacity: 0.8; }}
+            100% {{ transform: scale(4.5); opacity: 0; filter: blur(4px); }}
+        }}
+        .custom-ripple {{
+            position: relative;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }}
+        .ripple-core {{
+            width: 6px; height: 6px; background-color: #C4E1FF; 
+            border-radius: 50%; box-shadow: 0 0 8px #C4E1FF;
+        }}
+        .ripple-wave {{
+            position: absolute; width: 12px; height: 12px; border-radius: 50%;
+            border: 1px solid #C4E1FF; animation: ripple-anim 4s ease-out forwards;
+        }}
+        .core-yellow {{ background-color: #f1c40f; box-shadow: 0 0 8px #f1c40f; }}
+        .wave-yellow {{ border-color: #f1c40f; }}
+    </style>
 
-                    // 畫漣漪
-                    const ripple = document.createElement('div');
-                    ripple.className = 'ripple';
-                    ripple.style.left = pos.x + 'px';
-                    ripple.style.top = pos.y + 'px';
-                    overlay.appendChild(ripple);
-                }}, i * 400); // 依序滴入
+    <script>
+        const map = L.map('leaflet-map', {{
+            center: [23.6, 120.9],
+            zoom: 7,
+            zoomControl: false,
+            dragging: true,
+            scrollWheelZoom: false
+        }});
+
+        // 使用 CartoDB Dark Matter 清楚底圖
+        L.tileLayer('https://{{s}}.basemaps.cartocdn.com/dark_all/{{z}}/{{x}}/{{y}}{{r}}.png', {{
+            attribution: '&copy; OpenStreetMap &copy; CARTO'
+        }}).addTo(map);
+
+        const rawData = {json.dumps(raw_list)};
+        const verData = {json.dumps(ver_list)};
+
+        function addRipple(lat, lon, isVerified, name, delay) {{
+            setTimeout(() => {{
+                const colorClass = isVerified ? 'yellow' : '';
+                const icon = L.divIcon({{
+                    html: `<div class="custom-ripple">
+                            <div class="ripple-core ${{isVerified ? 'core-yellow' : ''}}"></div>
+                            <div class="ripple-wave ${{isVerified ? 'wave-yellow' : ''}}"></div>
+                           </div>`,
+                    className: '',
+                    iconSize: [20, 20],
+                    iconAnchor: [10, 10]
+                }});
+                L.marker([lat, lon], {{icon: icon}}).addTo(map).bindPopup(name);
+            }}, delay);
+        }}
+
+        // 依序滴入動畫
+        rawData.forEach((p, i) => {{
+            addRipple(p.Latitude, p.Longitude, false, p.Username, i * 400);
+        }});
+
+        setTimeout(() => {{
+            verData.forEach((p, i) => {{
+                addRipple(p.Latitude, p.Longitude, true, '專家驗證', i * 400);
             }});
-        </script>
-        """
+        }}, 2000);
+    </script>
+    """
 
-        # 先放地圖，再疊加動畫
-        folium_static(m, width=1100, height=650)
-        st.components.v1.html(animation_html, height=650)
+    st.components.v1.html(html_content, height=670)
 
-    st.sidebar.info(f"當前模式：分離層時序動畫")
-    st.sidebar.write(f"底圖已固定，動畫正在依序呈現...")
-    if st.sidebar.button("🔄 重新播放"):
+    st.sidebar.markdown(f"### 📍 聲景數據")
+    st.sidebar.write(f"正在依時序播放 {len(raw_data)} 筆紀錄...")
+    if st.sidebar.button("🔄 重新載入動畫"):
         st.rerun()
 else:
-    st.warning("請檢查 CSV 資料內容。")
+    st.warning("找不到 CSV 資料。請檢查 GitHub 上的 raw_data.csv 是否正確。")
