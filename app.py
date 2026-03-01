@@ -2,14 +2,18 @@ import streamlit as st
 import pandas as pd
 import json
 
-# --- 1. 頁面設定 ---
-st.set_page_config(layout="wide", page_title="台灣蛙鳴環境聲景：永續漣漪地圖")
+# --- 1. 頁面與全螢幕樣式設定 ---
+st.set_page_config(layout="wide", page_title="台灣蛙鳴環境聲景：全螢幕沉浸地圖")
 
+# 強制將 Streamlit 的所有邊距歸零，讓黑色展示框滿版
 st.markdown("""
-    <div style="text-align: center;">
-        <h1 style='color: #C4E1FF; font-weight: 200; letter-spacing: 3px;'>🌿 台灣蛙鳴環境聲景：永續漣漪地圖</h1>
-        <p style='color: #888; font-size: 1.1em;'>動畫已設定為自動重複播放。地圖支援滾輪縮放與拖動，高度已增加以呈現完整視野。</p>
-    </div>
+    <style>
+        .main > div { padding: 0 !important; }
+        iframe { border: none !important; }
+        .stApp { background-color: #010101; }
+        header { visibility: hidden; }
+        footer { visibility: hidden; }
+    </style>
 """, unsafe_allow_html=True)
 
 # --- 2. 資料讀取與處理 ---
@@ -38,22 +42,27 @@ raw_data, verified_data = load_and_process_data()
 
 # --- 3. 整合式地圖與循環動畫 ---
 if not raw_data.empty:
-    raw_list = raw_data[['Latitude', 'Longitude', 'Username']].to_dict(orient='records')
-    ver_list = verified_data[['Latitude', 'Longitude', 'Review Identity']].to_dict(orient='records')
+    raw_json = raw_data[['Latitude', 'Longitude', 'Username']].to_dict(orient='records')
+    ver_json = verified_data[['Latitude', 'Longitude', 'Review Identity']].to_dict(orient='records')
 
     html_content = f"""
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     
-    <div id="map-container" style="position: relative; width: 95%; height: 750px; background: #010101; border-radius: 15px; overflow: hidden; margin: 0 auto; border: 1px solid #1A3A3A;">
+    <div id="map-container" style="position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; background: #010101; overflow: hidden;">
         <div id="leaflet-map" style="width: 100%; height: 100%; z-index: 1;"></div>
+        
+        <div style="position: absolute; top: 20px; width: 100%; text-align: center; z-index: 1000; pointer-events: none;">
+            <h1 style='color: #C4E1FF; font-weight: 200; letter-spacing: 5px; font-family: sans-serif; margin: 0;'>🌿 台灣蛙鳴環境聲景</h1>
+            <p style='color: #888; font-size: 1em; letter-spacing: 1px;'>永續漣漪時序地圖</p>
+        </div>
     </div>
 
     <style>
         @keyframes ripple-slow {{
             0% {{ transform: scale(1); opacity: 0; }}
             10% {{ opacity: 0.7; }}
-            100% {{ transform: scale(7); opacity: 0; filter: blur(10px); }}
+            100% {{ transform: scale(8); opacity: 0; filter: blur(12px); }}
         }}
         .custom-ripple {{
             position: relative; display: flex; justify-content: center; align-items: center;
@@ -64,7 +73,7 @@ if not raw_data.empty:
         }}
         .ripple-wave {{
             position: absolute; width: 12px; height: 12px; border-radius: 50%;
-            border: 1px solid #C4E1FF; 
+            border: 1.5px solid #C4E1FF; 
             animation: ripple-slow 12s cubic-bezier(0.2, 0, 0.3, 1) forwards;
         }}
         .core-yellow {{ background-color: #f1c40f; box-shadow: 0 0 12px #f1c40f; }}
@@ -72,21 +81,20 @@ if not raw_data.empty:
     </style>
 
     <script>
-        // 設定中心點與縮放，7.2 在 750px 高度下能完美呈現台灣全島
         const map = L.map('leaflet-map', {{
             center: [23.6, 120.95],
-            zoom: 7.2,
-            zoomControl: true,
+            zoom: 7.5,
+            zoomControl: false,
             dragging: true,
             scrollWheelZoom: true
         }});
 
         L.tileLayer('https://{{s}}.basemaps.cartocdn.com/dark_all/{{z}}/{{x}}/{{y}}{{r}}.png', {{
-            attribution: '&copy; CARTO'
+            attribution: ''
         }}).addTo(map);
 
-        const rawData = {json.dumps(raw_list)};
-        const verData = {json.dumps(ver_list)};
+        const rawData = {json.dumps(raw_json)};
+        const verData = {json.dumps(ver_json)};
         let markerLayer = L.layerGroup().addTo(map);
 
         function startPlayback() {{
@@ -97,22 +105,22 @@ if not raw_data.empty:
             rawData.forEach((p, i) => {{
                 totalDelay = i * step;
                 setTimeout(() => {{
-                    addMarker(p.Latitude, p.Longitude, false, p.Username);
+                    addMarker(p.Latitude, p.Longitude, false);
                 }}, totalDelay);
             }});
 
             const verStartDelay = totalDelay + step;
             verData.forEach((p, i) => {{
                 setTimeout(() => {{
-                    addMarker(p.Latitude, p.Longitude, true, '專家驗證');
+                    addMarker(p.Latitude, p.Longitude, true);
                 }}, verStartDelay + (i * step));
             }});
 
-            const totalCycleTime = verStartDelay + (verData.length * step) + 6000;
+            const totalCycleTime = verStartDelay + (verData.length * step) + 8000;
             setTimeout(startPlayback, totalCycleTime);
         }}
 
-        function addMarker(lat, lon, isVerified, name) {{
+        function addMarker(lat, lon, isVerified) {{
             const icon = L.divIcon({{
                 html: `<div class="custom-ripple">
                         <div class="ripple-core ${{isVerified ? 'core-yellow' : ''}}"></div>
@@ -129,13 +137,8 @@ if not raw_data.empty:
     </script>
     """
 
-    # Streamlit 元件高度設為 780 以容納內部的 750px 容器
-    st.components.v1.html(html_content, height=780)
+    # 將 Streamlit 元件設定為充滿視窗的高度
+    st.components.v1.html(html_content, height=1000) # 設定足夠大的高度值，內部 JS 會控制 100vh
 
-    st.sidebar.markdown(f"### 🌊 播放資訊")
-    st.sidebar.write("● 模式：自動循環播放")
-    st.sidebar.write("● 畫面：擴大高度版 (750px)")
-    st.sidebar.write(f"● 總紀錄：{len(raw_data) + len(verified_data)} 筆")
-    
 else:
     st.warning("找不到 CSV 資料。")
