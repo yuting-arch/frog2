@@ -54,53 +54,55 @@ if not raw_data.empty:
     </div>
 
     <style>
-        /* 核心關鍵：深沉入水擴散動畫 */
-        @keyframes deep-ripple-spread {{
+        /* 優化：輕柔落點動畫 */
+        @keyframes ripple-soft-spread {{
             0% {{ 
-                transform: scale(0.1); 
+                transform: translate(-50%, -50%) scale(0.2); 
                 opacity: 0; 
-                filter: blur(5px);
-            }}
-            15% {{ 
-                transform: scale(0.8); 
-                opacity: 0.4; /* 入水瞬間的微光 */
                 filter: blur(2px);
             }}
+            15% {{ 
+                opacity: 0.5; /* 緩慢浮現，不生硬刺眼 */
+            }}
             100% {{ 
-                transform: scale(8.5); 
+                transform: translate(-50%, -50%) scale(9); 
                 opacity: 0; 
                 filter: blur(12px); 
             }}
         }}
 
-        /* 核心點的緩慢浮現 */
-        @keyframes core-pulse {{
-            0% {{ opacity: 0; }}
-            20% {{ opacity: 0.8; }}
-            100% {{ opacity: 0.3; }}
-        }}
-
         .custom-ripple {{
-            position: relative; display: flex; justify-content: center; align-items: center;
+            position: relative; 
+            display: flex; 
+            justify-content: center; 
+            align-items: center;
         }}
 
         .ripple-core {{
-            width: 5px; height: 5px; background-color: #C4E1FF; 
-            border-radius: 50%; box-shadow: 0 0 10px #C4E1FF;
-            z-index: 10;
+            width: 4px; height: 4px; 
+            background-color: #C4E1FF; 
+            border-radius: 50%; 
+            box-shadow: 0 0 12px rgba(196, 225, 255, 0.6);
             opacity: 0;
-            animation: core-pulse 10s ease-out forwards;
+            animation: core-fade 2s ease-out forwards;
+        }}
+
+        @keyframes core-fade {{
+            0% {{ opacity: 0; }}
+            100% {{ opacity: 0.8; }}
         }}
 
         .ripple-wave {{
-            position: absolute; width: 12px; height: 12px; border-radius: 50%;
-            border: 0.6px solid #C4E1FF; 
-            /* 使用特定的貝點曲線，讓起始點有種沉入感 */
-            animation: deep-ripple-spread 12s cubic-bezier(0.1, 0, 0.2, 1) forwards;
+            position: absolute; 
+            width: 10px; height: 10px; 
+            border-radius: 50%;
+            border: 0.5px solid #C4E1FF; 
+            /* 使用緩入緩出的貝點曲線，讓開頭更輕柔 */
+            animation: ripple-soft-spread 12s cubic-bezier(0.15, 0, 0.2, 1) forwards;
             pointer-events: none;
         }}
 
-        .core-yellow {{ background-color: #f1c40f; box-shadow: 0 0 10px #f1c40f; }}
+        .core-yellow {{ background-color: #f1c40f; box-shadow: 0 0 12px rgba(241, 196, 15, 0.6); }}
         .wave-yellow {{ border-color: #f1c40f; }}
     </style>
 
@@ -124,7 +126,7 @@ if not raw_data.empty:
         function startPlayback() {{
             markerLayer.clearLayers();
             let totalDelay = 0;
-            const step = 2000; // 拉長間隔，增加呼吸與深沉感
+            const step = 1800; // 稍微拉長落點間隔，增加呼吸感
 
             const allData = [
                 ...rawData.map(p => ({{...p, isVer: false}})),
@@ -154,7 +156,7 @@ if not raw_data.empty:
                         <div class="ripple-wave ${{colorClass}}" style="animation-delay: 6s;"></div>
                        </div>`,
                 className: '',
-                iconSize: [1, 1],
+                iconSize: [1, 1], // 縮小容器錨點
                 iconAnchor: [0.5, 0.5]
             }});
             L.marker([lat, lon], {{icon: icon}}).addTo(markerLayer);
@@ -167,4 +169,4 @@ if not raw_data.empty:
     st.components.v1.html(html_content, height=1200)
 
 else:
-    st.error("無法讀取 CSV 資料。")
+    st.error("無法讀取資料。")
