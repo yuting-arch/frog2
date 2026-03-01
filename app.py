@@ -8,13 +8,13 @@ import json
 st.set_page_config(layout="wide", page_title="台灣蛙鳴環境聲景地圖")
 
 st.markdown("""
-    <div style="text-align: center;">
-        <h1 style='color: #C4E1FF; font-weight: 200; letter-spacing: 3px;'>🌿 台灣蛙鳴環境聲景：時序沉浸地圖</h1>
-        <p style='color: #888; font-size: 1.1em;'>地圖已對齊。資料將依據 Create Date 順序在地圖上泛起 #C4E1FF 的漣漪。</p>
+    <div style="text-align: center; margin-bottom: 10px;">
+        <h1 style='color: #C4E1FF; font-weight: 200; letter-spacing: 3px;'>🌿 台灣蛙鳴環境聲景：分離層沉浸地圖</h1>
+        <p style='color: #888; font-size: 1.1em;'>底圖與動畫分離：底圖靜止呈現，動畫於上方依時序泛起漣漪。</p>
     </div>
 """, unsafe_allow_html=True)
 
-# --- 2. 核心資料讀取與時序處理 ---
+# --- 2. 核心資料讀取與排序 ---
 @st.cache_data
 def load_and_process_data():
     def try_read(file_name):
@@ -33,95 +33,112 @@ def load_and_process_data():
             df['Latitude'] = pd.to_numeric(df['Latitude'], errors='coerce')
             df['Longitude'] = pd.to_numeric(df['Longitude'], errors='coerce')
             df['Create Date'] = pd.to_datetime(df['Create Date'], errors='coerce')
-            # 依時間排序是動畫的靈魂
-            return df.dropna(subset=['Latitude', 'Longitude', 'Create Date']).sort_values('Create Date')
+            return df.dropna(subset=['Latitude', 'Longitude']).sort_values('Create Date')
         return pd.DataFrame()
 
     return finalize(df_raw), finalize(df_verified)
 
 raw_data, verified_data = load_and_process_data()
 
-# --- 3. 建立地圖 ---
+# --- 3. 建立畫面 ---
 if not raw_data.empty:
-    # 建立一個基礎地圖，不直接在裡面畫點
-    m = folium.Map(
-        location=[23.6, 121.0], 
-        zoom_start=7, 
-        tiles="cartodbdarkmatter"
-    )
-
-    # 準備資料與 JavaScript 動畫腳本
-    raw_list = raw_data[['Latitude', 'Longitude', 'Username']].to_dict(orient='records')
-    ver_list = verified_data[['Latitude', 'Longitude', 'Review Identity']].to_dict(orient='records')
-
-    # CSS 動畫：核心與淡化漣漪
-    animation_js = f"""
-    <style>
-        @keyframes ripple-play {{
-            0% {{ transform: scale(1); opacity: 0.8; }}
-            100% {{ transform: scale(4.5); opacity: 0; filter: blur(4px); }}
-        }}
-        .ripple-core {{
-            width: 6px; height: 6px; border-radius: 50%;
-            position: absolute; transform: translate(-50%, -50%);
-        }}
-        .ripple-wave {{
-            position: absolute; width: 12px; height: 12px; border-radius: 50%;
-            border: 1px solid; transform: translate(-50%, -50%) scale(0);
-            animation: ripple-play 4s ease-out forwards;
-        }}
-    </style>
-    <script>
-        // 等待地圖與視窗完全載入
-        window.addEventListener('load', function() {{
-            const rawData = {json.dumps(raw_list)};
-            const verData = {json.dumps(ver_list)};
+    # 建立容器
+    container = st.container()
+    
+    with container:
+        # 第一層：底圖層 (Folium)
+        # 設定地圖不可拖動與縮放，確保它像「貼紙」一樣固定
+        m = folium.Map(
+            location=[23.6, 120.8], 
+            zoom_start=7.5, 
+            tiles="cartodbdarkmatter",
+            zoom_control=False,
+            scrollWheelZoom=False,
+            dragging=False
+        )
+        
+        # 準備動畫數據
+        raw_list = raw_data[['Latitude', 'Longitude']].to_dict(orient='records')
+        
+        # 第二層：透明動畫層 (HTML/JS)
+        # 我們計算台灣經緯度到網頁像素的投影
+        animation_html = f"""
+        <div id="animation-overlay"></div>
+        <style>
+            #animation-overlay {{
+                position: absolute;
+                top: 0; left: 0;
+                width: 100%; height: 650px;
+                pointer-events: none; /* 讓滑鼠可以穿透 */
+                z-index: 999;
+                overflow: hidden;
+            }}
+            @keyframes ripple-effect {{
+                0% {{ transform: translate(-50%, -50%) scale(0.2); opacity: 0; }}
+                20% {{ opacity: 0.8; }}
+                100% {{ transform: translate(-50%, -50%) scale(4); opacity: 0; filter: blur(4px); }}
+            }}
+            .ripple {{
+                position: absolute;
+                width: 15px; height: 15px;
+                border: 1px solid #C4E1FF;
+                border-radius: 50%;
+                animation: ripple-effect 4s ease-out forwards;
+            }}
+            .dot {{
+                position: absolute;
+                width: 6px; height: 6px;
+                background-color: #C4E1FF;
+                border-radius: 50%;
+                box-shadow: 0 0 8px #C4E1FF;
+                transform: translate(-50%, -50%);
+            }}
+        </style>
+        <script>
+            const data = {json.dumps(raw_list)};
+            const overlay = document.getElementById('animation-overlay');
             
-            // 延遲 2 秒開始，確保 Streamlit 的 iframe 完全穩定
-            setTimeout(() => {{
-                // 獲取 Leaflet 地圖實例 (關鍵點)
-                const maps = [];
-                window.parent.L.Map.eachLayer(function(layer) {{
-                    if (layer instanceof window.parent.L.Map) maps.push(layer);
-                }});
-                const leafletMap = maps[0]; 
+            // 台灣座標投影函數 (針對 Folium zoom 7.5 的位置微調)
+            function project(lat, lon) {{
+                const mapWidth = 1100;
+                const mapHeight = 650;
+                const minLon = 118.5, maxLon = 123.0;
+                const minLat = 21.5, maxLat = 25.8;
+                
+                const x = ((lon - minLon) / (maxLon - minLon)) * mapWidth;
+                const y = mapHeight - (((lat - minLat) / (maxLat - minLat)) * mapHeight);
+                return {{x, y}};
+            }}
 
-                if (!leafletMap) return;
-
-                function addAnimatedPoint(p, color, i, stepDelay) {{
-                    setTimeout(() => {{
-                        const icon = window.parent.L.divIcon({{
-                            html: `<div style="position:relative;">
-                                    <div class="ripple-core" style="background-color:${{color}}; box-shadow: 0 0 8px ${{color}};"></div>
-                                    <div class="ripple-wave" style="border-color:${{color}};"></div>
-                                   </div>`,
-                            className: '',
-                            iconSize: [1, 1]
-                        }});
-                        window.parent.L.marker([p.Latitude, p.Longitude], {{icon: icon}}).addTo(leafletMap);
-                    }}, i * stepDelay);
-                }}
-
-                // 按順序播放
-                rawData.forEach((p, i) => addAnimatedPoint(p, '#C4E1FF', i, 500));
+            data.forEach((p, i) => {{
                 setTimeout(() => {{
-                    verData.forEach((p, i) => addAnimatedPoint(p, '#f1c40f', i, 500));
-                }}, 2000);
+                    const pos = project(p.Latitude, p.Longitude);
+                    
+                    // 畫核心點
+                    const dot = document.createElement('div');
+                    dot.className = 'dot';
+                    dot.style.left = pos.x + 'px';
+                    dot.style.top = pos.y + 'px';
+                    overlay.appendChild(dot);
 
-            }}, 2000);
-        }});
-    </script>
-    """
-    
-    # 呈現地圖
-    folium_static(m, width=1100, height=650)
-    
-    # 注入動畫邏輯 (使用 hidden container)
-    st.components.v1.html(animation_js, height=0)
+                    // 畫漣漪
+                    const ripple = document.createElement('div');
+                    ripple.className = 'ripple';
+                    ripple.style.left = pos.x + 'px';
+                    ripple.style.top = pos.y + 'px';
+                    overlay.appendChild(ripple);
+                }}, i * 400); // 依序滴入
+            }});
+        </script>
+        """
 
-    st.sidebar.markdown(f"### 🌙 聲景撥放狀態")
-    st.sidebar.write(f"正在依時序播放 {len(raw_data)} 筆紀錄...")
-    if st.sidebar.button("🔄 重新播放動畫"):
+        # 先放地圖，再疊加動畫
+        folium_static(m, width=1100, height=650)
+        st.components.v1.html(animation_html, height=650)
+
+    st.sidebar.info(f"當前模式：分離層時序動畫")
+    st.sidebar.write(f"底圖已固定，動畫正在依序呈現...")
+    if st.sidebar.button("🔄 重新播放"):
         st.rerun()
 else:
-    st.warning("資料載入中，請確保 GitHub 上的 CSV 檔案正確。")
+    st.warning("請檢查 CSV 資料內容。")
