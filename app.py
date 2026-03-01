@@ -3,16 +3,19 @@ import pandas as pd
 import json
 
 # --- 1. 頁面與全螢幕樣式設定 ---
-st.set_page_config(layout="wide", page_title="台灣蛙鳴環境聲景：全螢幕沉浸地圖")
+st.set_page_config(layout="wide", page_title="台灣蛙鳴環境聲景")
 
-# 強制將 Streamlit 的所有邊距歸零，讓黑色展示框滿版
+# 強制將所有邊距、標題、頁尾歸零，呈現極簡純黑劇院感
 st.markdown("""
     <style>
         .main > div { padding: 0 !important; }
         iframe { border: none !important; }
         .stApp { background-color: #010101; }
-        header { visibility: hidden; }
-        footer { visibility: hidden; }
+        header, footer, #MainMenu { visibility: hidden; }
+        /* 移除標題區域 */
+        [data-testid="stHeader"] { display: none; }
+        /* 確保全視窗滿版 */
+        .block-container { padding: 0 !important; max-width: 100% !important; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -33,6 +36,7 @@ def load_and_process_data():
             df['Latitude'] = pd.to_numeric(df['Latitude'], errors='coerce')
             df['Longitude'] = pd.to_numeric(df['Longitude'], errors='coerce')
             df['Create Date'] = pd.to_datetime(df['Create Date'], errors='coerce')
+            # 確保所有有效資料都被載入並排序
             return df.dropna(subset=['Latitude', 'Longitude', 'Create Date']).sort_values('Create Date')
         return pd.DataFrame()
 
@@ -40,7 +44,7 @@ def load_and_process_data():
 
 raw_data, verified_data = load_and_process_data()
 
-# --- 3. 整合式地圖與循環動畫 ---
+# --- 3. 整合式地圖與多重漣漪動畫 ---
 if not raw_data.empty:
     raw_json = raw_data[['Latitude', 'Longitude', 'Username']].to_dict(orient='records')
     ver_json = verified_data[['Latitude', 'Longitude', 'Review Identity']].to_dict(orient='records')
@@ -51,32 +55,35 @@ if not raw_data.empty:
     
     <div id="map-container" style="position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; background: #010101; overflow: hidden;">
         <div id="leaflet-map" style="width: 100%; height: 100%; z-index: 1;"></div>
-        
-        <div style="position: absolute; top: 20px; width: 100%; text-align: center; z-index: 1000; pointer-events: none;">
-            <h1 style='color: #C4E1FF; font-weight: 200; letter-spacing: 5px; font-family: sans-serif; margin: 0;'>🌿 台灣蛙鳴環境聲景</h1>
-            <p style='color: #888; font-size: 1em; letter-spacing: 1px;'>永續漣漪時序地圖</p>
-        </div>
     </div>
 
     <style>
-        @keyframes ripple-slow {{
+        /* 漣漪動畫：慢速且帶有平滑淡化 */
+        @keyframes ripple-spread {{
             0% {{ transform: scale(1); opacity: 0; }}
-            10% {{ opacity: 0.7; }}
-            100% {{ transform: scale(8); opacity: 0; filter: blur(12px); }}
+            10% {{ opacity: 0.6; }}
+            100% {{ transform: scale(8); opacity: 0; filter: blur(10px); }}
         }}
+
         .custom-ripple {{
             position: relative; display: flex; justify-content: center; align-items: center;
         }}
+
         .ripple-core {{
-            width: 6px; height: 6px; background-color: #C4E1FF; 
-            border-radius: 50%; box-shadow: 0 0 12px #C4E1FF;
+            width: 5px; height: 5px; background-color: #C4E1FF; 
+            border-radius: 50%; box-shadow: 0 0 10px #C4E1FF;
+            z-index: 10;
         }}
+
+        /* 多重圓圈：一圈一圈擴散 */
         .ripple-wave {{
             position: absolute; width: 12px; height: 12px; border-radius: 50%;
-            border: 1.5px solid #C4E1FF; 
-            animation: ripple-slow 12s cubic-bezier(0.2, 0, 0.3, 1) forwards;
+            border: 1px solid #C4E1FF; 
+            animation: ripple-spread 10s cubic-bezier(0.2, 0, 0.3, 1) forwards;
+            pointer-events: none;
         }}
-        .core-yellow {{ background-color: #f1c40f; box-shadow: 0 0 12px #f1c40f; }}
+
+        .core-yellow {{ background-color: #f1c40f; box-shadow: 0 0 10px #f1c40f; }}
         .wave-yellow {{ border-color: #f1c40f; }}
     </style>
 
@@ -100,31 +107,37 @@ if not raw_data.empty:
         function startPlayback() {{
             markerLayer.clearLayers();
             let totalDelay = 0;
-            const step = 1200;
+            const step = 1500; // 每個資料點出現的間隔
 
-            rawData.forEach((p, i) => {{
+            // 合併所有資料點進行完整展示
+            const allData = [
+                ...rawData.map(p => ({{...p, isVer: false}})),
+                ...verData.map(p => ({{...p, isVer: true}}))
+            ];
+
+            allData.forEach((p, i) => {{
                 totalDelay = i * step;
                 setTimeout(() => {{
-                    addMarker(p.Latitude, p.Longitude, false);
+                    addMultiRippleMarker(p.Latitude, p.Longitude, p.isVer);
                 }}, totalDelay);
             }});
 
-            const verStartDelay = totalDelay + step;
-            verData.forEach((p, i) => {{
-                setTimeout(() => {{
-                    addMarker(p.Latitude, p.Longitude, true);
-                }}, verStartDelay + (i * step));
-            }});
-
-            const totalCycleTime = verStartDelay + (verData.length * step) + 8000;
-            setTimeout(startPlayback, totalCycleTime);
+            // 確保所有漣漪擴散完畢後再重複 (總點數 * 間隔 + 動畫長度)
+            const cycleBuffer = 12000; 
+            setTimeout(startPlayback, totalDelay + cycleBuffer);
         }}
 
-        function addMarker(lat, lon, isVerified) {{
+        function addMultiRippleMarker(lat, lon, isVer) {{
+            // 建立核心點與「三層」漣漪，達到一圈一圈的效果
+            const colorClass = isVer ? 'wave-yellow' : '';
+            const coreClass = isVer ? 'core-yellow' : '';
+            
             const icon = L.divIcon({{
                 html: `<div class="custom-ripple">
-                        <div class="ripple-core ${{isVerified ? 'core-yellow' : ''}}"></div>
-                        <div class="ripple-wave ${{isVerified ? 'wave-yellow' : ''}}"></div>
+                        <div class="ripple-core ${{coreClass}}"></div>
+                        <div class="ripple-wave ${{colorClass}}" style="animation-delay: 0s;"></div>
+                        <div class="ripple-wave ${{colorClass}}" style="animation-delay: 2s;"></div>
+                        <div class="ripple-wave ${{colorClass}}" style="animation-delay: 4s;"></div>
                        </div>`,
                 className: '',
                 iconSize: [20, 20],
@@ -133,12 +146,12 @@ if not raw_data.empty:
             L.marker([lat, lon], {{icon: icon}}).addTo(markerLayer);
         }}
 
-        startPlayback();
+        // 初次啟動
+        setTimeout(startPlayback, 1000);
     </script>
     """
 
-    # 將 Streamlit 元件設定為充滿視窗的高度
-    st.components.v1.html(html_content, height=1000) # 設定足夠大的高度值，內部 JS 會控制 100vh
+    st.components.v1.html(html_content, height=1200) # 設定大高度以支援 100vh 展示
 
 else:
-    st.warning("找不到 CSV 資料。")
+    st.error("無法讀取 CSV 資料，請確認 GitHub 目錄檔案。")
