@@ -5,16 +5,13 @@ import json
 # --- 1. 頁面與全螢幕樣式設定 ---
 st.set_page_config(layout="wide", page_title="Identifrog: Frog Voiceprint Identification Project")
 
-# 強制將所有邊距、標題、頁尾歸零，呈現極簡純黑劇院感
 st.markdown("""
     <style>
         .main > div { padding: 0 !important; }
         iframe { border: none !important; }
         .stApp { background-color: #010101; }
         header, footer, #MainMenu { visibility: hidden; }
-        /* 移除標題區域 */
         [data-testid="stHeader"] { display: none; }
-        /* 確保全視窗滿版 */
         .block-container { padding: 0 !important; max-width: 100% !important; }
     </style>
 """, unsafe_allow_html=True)
@@ -43,7 +40,7 @@ def load_and_process_data():
 
 raw_data, verified_data = load_and_process_data()
 
-# --- 3. 整合式地圖與多重漣漪動畫 ---
+# --- 3. 整合式地圖與科技感漣漪動畫 ---
 if not raw_data.empty:
     raw_json = raw_data[['Latitude', 'Longitude', 'Username']].to_dict(orient='records')
     ver_json = verified_data[['Latitude', 'Longitude', 'Review Identity']].to_dict(orient='records')
@@ -61,38 +58,54 @@ if not raw_data.empty:
                 Frog Voiceprint Identification Project
             </p>
         </div>
-
         <div id="leaflet-map" style="width: 100%; height: 100%; z-index: 1;"></div>
     </div>
 
     <style>
-        /* 漣漪動畫：維持原樣擴散速度 */
-        @keyframes ripple-spread {{
-            0% {{ transform: scale(1); opacity: 0; }}
-            10% {{ opacity: 0.6; }}
-            100% {{ transform: scale(8); opacity: 0; filter: blur(10px); }}
+        /* 核心科技感動畫：模擬影片中的立體發光波紋 */
+        @keyframes tech-ripple-spread {{
+            0% {{ 
+                transform: scale(0.5); 
+                opacity: 0; 
+                box-shadow: 0 0 0px 0px rgba(196, 225, 255, 0);
+            }}
+            20% {{ 
+                opacity: 0.8; 
+                box-shadow: 0 0 20px 2px rgba(196, 225, 255, 0.4);
+            }}
+            100% {{ 
+                transform: scale(10); 
+                opacity: 0; 
+                filter: blur(4px);
+                box-shadow: 0 0 50px 10px rgba(196, 225, 255, 0);
+            }}
         }}
 
         .custom-ripple {{
             position: relative; display: flex; justify-content: center; align-items: center;
         }}
 
+        /* 能量核心點 */
         .ripple-core {{
-            width: 5px; height: 5px; background-color: #C4E1FF; 
-            border-radius: 50%; box-shadow: 0 0 10px #C4E1FF;
+            width: 4px; height: 4px; 
+            background-color: #fff; 
+            border-radius: 50%; 
+            box-shadow: 0 0 15px 3px #C4E1FF, 0 0 30px 5px rgba(196, 225, 255, 0.3);
             z-index: 10;
         }}
 
-        /* 多重圓圈：一圈一圈擴散 */
+        /* 科技發光環：使用徑向漸層營造立體感 */
         .ripple-wave {{
-            position: absolute; width: 12px; height: 12px; border-radius: 50%;
-            border: 1px solid #C4E1FF; 
-            animation: ripple-spread 10s cubic-bezier(0.2, 0, 0.3, 1) forwards;
+            position: absolute; width: 15px; height: 15px; border-radius: 50%;
+            /* 模擬影片中的光環質感 */
+            background: radial-gradient(circle, transparent 40%, rgba(196, 225, 255, 0.2) 60%, rgba(196, 225, 255, 0.6) 85%, transparent 100%);
+            border: 0.5px solid rgba(196, 225, 255, 0.3);
+            animation: tech-ripple-spread 8s cubic-bezier(0.1, 0.4, 0.2, 1) forwards;
             pointer-events: none;
         }}
 
-        .core-yellow {{ background-color: #f1c40f; box-shadow: 0 0 10px #f1c40f; }}
-        .wave-yellow {{ border-color: #f1c40f; }}
+        .core-yellow {{ box-shadow: 0 0 15px 3px #f1c40f, 0 0 30px 5px rgba(241, 196, 15, 0.3); }}
+        .wave-yellow {{ background: radial-gradient(circle, transparent 40%, rgba(241, 196, 15, 0.1) 60%, rgba(241, 196, 15, 0.5) 85%, transparent 100%); border-color: rgba(241, 196, 15, 0.3); }}
     </style>
 
     <script>
@@ -115,7 +128,7 @@ if not raw_data.empty:
         function startPlayback() {{
             markerLayer.clearLayers();
             let totalDelay = 0;
-            const step = 1500; 
+            const step = 2000; 
 
             const allData = [
                 ...rawData.map(p => ({{...p, isVer: false}})),
@@ -125,15 +138,15 @@ if not raw_data.empty:
             allData.forEach((p, i) => {{
                 totalDelay = i * step;
                 setTimeout(() => {{
-                    addMultiRippleMarker(p.Latitude, p.Longitude, p.isVer);
+                    addTechRipple(p.Latitude, p.Longitude, p.isVer);
                 }}, totalDelay);
             }});
 
-            const cycleBuffer = 12000; 
+            const cycleBuffer = 15000; 
             setTimeout(startPlayback, totalDelay + cycleBuffer);
         }}
 
-        function addMultiRippleMarker(lat, lon, isVer) {{
+        function addTechRipple(lat, lon, isVer) {{
             const colorClass = isVer ? 'wave-yellow' : '';
             const coreClass = isVer ? 'core-yellow' : '';
             
@@ -141,8 +154,8 @@ if not raw_data.empty:
                 html: `<div class="custom-ripple">
                         <div class="ripple-core ${{coreClass}}"></div>
                         <div class="ripple-wave ${{colorClass}}" style="animation-delay: 0s;"></div>
-                        <div class="ripple-wave ${{colorClass}}" style="animation-delay: 2s;"></div>
-                        <div class="ripple-wave ${{colorClass}}" style="animation-delay: 4s;"></div>
+                        <div class="ripple-wave ${{colorClass}}" style="animation-delay: 1.5s;"></div>
+                        <div class="ripple-wave ${{colorClass}}" style="animation-delay: 3s;"></div>
                        </div>`,
                 className: '',
                 iconSize: [20, 20],
