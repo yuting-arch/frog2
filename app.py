@@ -66,21 +66,11 @@ if not raw_data.empty:
     </div>
 
     <style>
-        /* 優化：輕柔落點動畫 */
-        @keyframes ripple-soft-spread {{
-            0% {{ 
-                transform: translate(-50%, -50%) scale(0.2); 
-                opacity: 0; 
-                filter: blur(2px);
-            }}
-            15% {{ 
-                opacity: 0.5; /* 緩慢浮現，不生硬刺眼 */
-            }}
-            100% {{ 
-                transform: translate(-50%, -50%) scale(9); 
-                opacity: 0; 
-                filter: blur(12px); 
-            }}
+        /* 漣漪動畫：維持原樣擴散速度 */
+        @keyframes ripple-spread {{
+            0% {{ transform: scale(1); opacity: 0; }}
+            10% {{ opacity: 0.6; }}
+            100% {{ transform: scale(8); opacity: 0; filter: blur(10px); }}
         }}
 
         .custom-ripple {{
@@ -88,30 +78,20 @@ if not raw_data.empty:
         }}
 
         .ripple-core {{
-            width: 4px; height: 4px; 
-            background-color: #C4E1FF; 
-            border-radius: 50%; 
-            box-shadow: 0 0 12px rgba(196, 225, 255, 0.6);
-            opacity: 0;
-            animation: core-fade 2s ease-out forwards;
+            width: 5px; height: 5px; background-color: #C4E1FF; 
+            border-radius: 50%; box-shadow: 0 0 10px #C4E1FF;
+            z-index: 10;
         }}
 
-        @keyframes core-fade {{
-            0% {{ opacity: 0; }}
-            100% {{ opacity: 0.8; }}
-        }}
-
+        /* 多重圓圈：一圈一圈擴散 */
         .ripple-wave {{
-            position: absolute; 
-            width: 10px; height: 10px; 
-            border-radius: 50%;
-            border: 0.5px solid #C4E1FF; 
-            /* 使用緩入緩出的貝點曲線，讓開頭更輕柔 */
-            animation: ripple-soft-spread 12s cubic-bezier(0.15, 0, 0.2, 1) forwards;
+            position: absolute; width: 12px; height: 12px; border-radius: 50%;
+            border: 1px solid #C4E1FF; 
+            animation: ripple-spread 10s cubic-bezier(0.2, 0, 0.3, 1) forwards;
             pointer-events: none;
         }}
 
-        .core-yellow {{ background-color: #f1c40f; box-shadow: 0 0 12px rgba(241, 196, 15, 0.6); }}
+        .core-yellow {{ background-color: #f1c40f; box-shadow: 0 0 10px #f1c40f; }}
         .wave-yellow {{ border-color: #f1c40f; }}
     </style>
 
@@ -135,7 +115,7 @@ if not raw_data.empty:
         function startPlayback() {{
             markerLayer.clearLayers();
             let totalDelay = 0;
-            const step = 1800; // 稍微拉長落點間隔，增加呼吸感
+            const step = 1500; 
 
             const allData = [
                 ...rawData.map(p => ({{...p, isVer: false}})),
@@ -149,7 +129,7 @@ if not raw_data.empty:
                 }}, totalDelay);
             }});
 
-            const cycleBuffer = 15000; 
+            const cycleBuffer = 12000; 
             setTimeout(startPlayback, totalDelay + cycleBuffer);
         }}
 
@@ -161,12 +141,12 @@ if not raw_data.empty:
                 html: `<div class="custom-ripple">
                         <div class="ripple-core ${{coreClass}}"></div>
                         <div class="ripple-wave ${{colorClass}}" style="animation-delay: 0s;"></div>
-                        <div class="ripple-wave ${{colorClass}}" style="animation-delay: 3s;"></div>
-                        <div class="ripple-wave ${{colorClass}}" style="animation-delay: 6s;"></div>
+                        <div class="ripple-wave ${{colorClass}}" style="animation-delay: 2s;"></div>
+                        <div class="ripple-wave ${{colorClass}}" style="animation-delay: 4s;"></div>
                        </div>`,
                 className: '',
-                iconSize: [1, 1], // 縮小容器錨點
-                iconAnchor: [0.5, 0.5]
+                iconSize: [20, 20],
+                iconAnchor: [10, 10]
             }});
             L.marker([lat, lon], {{icon: icon}}).addTo(markerLayer);
         }}
