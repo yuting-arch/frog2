@@ -5,16 +5,13 @@ import json
 # --- 1. 頁面與全螢幕樣式設定 ---
 st.set_page_config(layout="wide", page_title="台灣蛙鳴環境聲景")
 
-# 強制將所有邊距、標題、頁尾歸零，呈現極簡純黑劇院感
 st.markdown("""
     <style>
         .main > div { padding: 0 !important; }
         iframe { border: none !important; }
         .stApp { background-color: #010101; }
         header, footer, #MainMenu { visibility: hidden; }
-        /* 移除標題區域 */
         [data-testid="stHeader"] { display: none; }
-        /* 確保全視窗滿版 */
         .block-container { padding: 0 !important; max-width: 100% !important; }
     </style>
 """, unsafe_allow_html=True)
@@ -36,7 +33,6 @@ def load_and_process_data():
             df['Latitude'] = pd.to_numeric(df['Latitude'], errors='coerce')
             df['Longitude'] = pd.to_numeric(df['Longitude'], errors='coerce')
             df['Create Date'] = pd.to_datetime(df['Create Date'], errors='coerce')
-            # 確保所有有效資料都被載入並排序
             return df.dropna(subset=['Latitude', 'Longitude', 'Create Date']).sort_values('Create Date')
         return pd.DataFrame()
 
@@ -58,11 +54,30 @@ if not raw_data.empty:
     </div>
 
     <style>
-        /* 漣漪動畫：慢速且帶有平滑淡化 */
-        @keyframes ripple-spread {{
-            0% {{ transform: scale(1); opacity: 0; }}
-            10% {{ opacity: 0.6; }}
-            100% {{ transform: scale(8); opacity: 0; filter: blur(10px); }}
+        /* 核心關鍵：深沉入水擴散動畫 */
+        @keyframes deep-ripple-spread {{
+            0% {{ 
+                transform: scale(0.1); 
+                opacity: 0; 
+                filter: blur(5px);
+            }}
+            15% {{ 
+                transform: scale(0.8); 
+                opacity: 0.4; /* 入水瞬間的微光 */
+                filter: blur(2px);
+            }}
+            100% {{ 
+                transform: scale(8.5); 
+                opacity: 0; 
+                filter: blur(12px); 
+            }}
+        }}
+
+        /* 核心點的緩慢浮現 */
+        @keyframes core-pulse {{
+            0% {{ opacity: 0; }}
+            20% {{ opacity: 0.8; }}
+            100% {{ opacity: 0.3; }}
         }}
 
         .custom-ripple {{
@@ -73,13 +88,15 @@ if not raw_data.empty:
             width: 5px; height: 5px; background-color: #C4E1FF; 
             border-radius: 50%; box-shadow: 0 0 10px #C4E1FF;
             z-index: 10;
+            opacity: 0;
+            animation: core-pulse 10s ease-out forwards;
         }}
 
-        /* 多重圓圈：一圈一圈擴散 */
         .ripple-wave {{
             position: absolute; width: 12px; height: 12px; border-radius: 50%;
-            border: 1px solid #C4E1FF; 
-            animation: ripple-spread 10s cubic-bezier(0.2, 0, 0.3, 1) forwards;
+            border: 0.6px solid #C4E1FF; 
+            /* 使用特定的貝點曲線，讓起始點有種沉入感 */
+            animation: deep-ripple-spread 12s cubic-bezier(0.1, 0, 0.2, 1) forwards;
             pointer-events: none;
         }}
 
@@ -107,9 +124,8 @@ if not raw_data.empty:
         function startPlayback() {{
             markerLayer.clearLayers();
             let totalDelay = 0;
-            const step = 1500; // 每個資料點出現的間隔
+            const step = 2000; // 拉長間隔，增加呼吸與深沉感
 
-            // 合併所有資料點進行完整展示
             const allData = [
                 ...rawData.map(p => ({{...p, isVer: false}})),
                 ...verData.map(p => ({{...p, isVer: true}}))
@@ -122,13 +138,11 @@ if not raw_data.empty:
                 }}, totalDelay);
             }});
 
-            // 確保所有漣漪擴散完畢後再重複 (總點數 * 間隔 + 動畫長度)
-            const cycleBuffer = 12000; 
+            const cycleBuffer = 15000; 
             setTimeout(startPlayback, totalDelay + cycleBuffer);
         }}
 
         function addMultiRippleMarker(lat, lon, isVer) {{
-            // 建立核心點與「三層」漣漪，達到一圈一圈的效果
             const colorClass = isVer ? 'wave-yellow' : '';
             const coreClass = isVer ? 'core-yellow' : '';
             
@@ -136,22 +150,21 @@ if not raw_data.empty:
                 html: `<div class="custom-ripple">
                         <div class="ripple-core ${{coreClass}}"></div>
                         <div class="ripple-wave ${{colorClass}}" style="animation-delay: 0s;"></div>
-                        <div class="ripple-wave ${{colorClass}}" style="animation-delay: 2s;"></div>
-                        <div class="ripple-wave ${{colorClass}}" style="animation-delay: 4s;"></div>
+                        <div class="ripple-wave ${{colorClass}}" style="animation-delay: 3s;"></div>
+                        <div class="ripple-wave ${{colorClass}}" style="animation-delay: 6s;"></div>
                        </div>`,
                 className: '',
-                iconSize: [20, 20],
-                iconAnchor: [10, 10]
+                iconSize: [1, 1],
+                iconAnchor: [0.5, 0.5]
             }});
             L.marker([lat, lon], {{icon: icon}}).addTo(markerLayer);
         }}
 
-        // 初次啟動
         setTimeout(startPlayback, 1000);
     </script>
     """
 
-    st.components.v1.html(html_content, height=1200) # 設定大高度以支援 100vh 展示
+    st.components.v1.html(html_content, height=1200)
 
 else:
-    st.error("無法讀取 CSV 資料，請確認 GitHub 目錄檔案。")
+    st.error("無法讀取 CSV 資料。")
